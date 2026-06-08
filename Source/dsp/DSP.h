@@ -6,11 +6,12 @@ namespace DSP
 {
     static constexpr double kTwoPi = 6.283185307179586;
 
-    // ---- Saturation shapes ----
+    // ---- Saturation shapes — all unity small-signal gain ----
 
     inline float tanhSat(float x, float drive)
     {
-        return std::tanh(x * (1.f + drive * 3.f));
+        float g = 1.f + drive * 3.f;
+        return std::tanh(x * g) / g;
     }
 
     // Asymmetric tanh: even-harmonic bias for transformer iron
@@ -19,7 +20,8 @@ namespace DSP
         float g = 1.f + drive * 4.f;
         float gp = g * (1.f + asym * 0.2f);
         float gn = g * (1.f - asym * 0.1f);
-        return x >= 0.f ? std::tanh(x * gp) : std::tanh(x * gn);
+        float raw = x >= 0.f ? std::tanh(x * gp) : std::tanh(x * gn);
+        return raw / g;
     }
 
     // Tube: warm, odd + even harmonics
@@ -27,7 +29,7 @@ namespace DSP
     {
         float g  = 1.f + drive * 5.f;
         float xd = x * g;
-        return std::tanh(xd + 0.1f * xd * xd) / (1.f + drive * 0.5f);
+        return std::tanh(xd + 0.1f * xd * xd) / g;
     }
 
     // Tape: soft limiter / compression curve
@@ -36,9 +38,7 @@ namespace DSP
         float g    = 1.f + drive * 3.f;
         float xd   = x * g;
         float sign = xd >= 0.f ? 1.f : -1.f;
-        float out  = sign * (1.f - std::exp(-std::abs(xd)));
-        float norm = 1.f - drive * 0.3f + 0.3f;
-        return out / std::max(1e-6f, norm);
+        return sign * (1.f - std::exp(-std::abs(xd))) / g;
     }
 
     inline float hardClip(float x, float ceil)

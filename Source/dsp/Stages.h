@@ -79,7 +79,7 @@ namespace Stages
             trimGainS.setTargetValue(trimGain);
             float d = driveS   .getNextValue();
             float t = trimGainS.getNextValue();
-            float preGain = 1.f + d * 10.f;
+            float preGain = 1.f + d * 3.f;
             float M    = ja.process(x * preGain);
             float norm = ja.linGain() * preGain;
             float out  = M / std::max(norm, 1e-6f);
@@ -176,7 +176,7 @@ namespace Stages
             float sat = satDriveS.getNextValue();
             float y = high.process(mid.process(low.process(x)));
             if (sat > 0.001f)
-                y = DSP::tanhSat(y, sat * 0.25f) * (1.f / (1.f + sat * 0.15f));
+                y = DSP::tanhSat(y, sat * 0.25f); // tanhSat is unity-normalized
             return y;
         }
     };
@@ -329,7 +329,7 @@ namespace Stages
         {
             float bumped  = headBump.process(x);
             float preEmph = hfBoost.process(bumped);
-            float preGain = 1.f + amt * 6.f;
+            float preGain = 1.f + amt * 3.f;
             float M    = jaTape.process(preEmph * preGain);
             float norm = jaTape.linGain() * preGain;
             float sat  = M / std::max(norm, 1e-6f);
@@ -555,7 +555,7 @@ namespace Stages
             trimDBS.setTargetValue(trimDB);
             float d = driveS .getNextValue();
             float t = trimDBS.getNextValue();
-            float preGain = 1.f + d * 8.f;
+            float preGain = 1.f + d * 3.f;
             float M    = ja.process(x * preGain);
             float norm = ja.linGain() * preGain;
             float out  = M / std::max(norm, 1e-6f);
