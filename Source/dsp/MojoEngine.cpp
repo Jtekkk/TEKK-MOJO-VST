@@ -41,6 +41,9 @@ void MojoEngine::prepare(double sampleRate, int samplesPerBlock)
     prep(inXL, inXR); prep(hpfL, hpfR); prep(ieqL, ieqR);
     prep(cmpL, cmpR); prep(drvL, drvR); prep(oeqL, oeqR);
     prep(limL, limR); prep(otxL, otxR); prep(clpL, clpR);
+
+    inTrimS .reset(sr, 0.020); inTrimS .setCurrentAndTargetValue(inTrim);
+    outTrimS.reset(sr, 0.020); outTrimS.setCurrentAndTargetValue(outTrim);
 }
 
 void MojoEngine::reset()
@@ -62,6 +65,8 @@ void MojoEngine::updateParams(juce::AudioProcessorValueTreeState& apvts)
     inTrim  = std::pow(10.f, fv(inputTrim)  / 20.f);
     outTrim = std::pow(10.f, fv(outputTrim) / 20.f);
     agcOn   = bv(autoGain);
+    inTrimS .setTargetValue(inTrim);
+    outTrimS.setTargetValue(outTrim);
 
     int newOS = 1 << iv(oversample);
     if (newOS != osFactor)
@@ -171,21 +176,25 @@ void MojoEngine::processBlock(juce::AudioBuffer<float>& buffer,
     const int numCh      = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
-    // Global input trim
-    for (int ch = 0; ch < numCh; ++ch)
-        juce::FloatVectorOperations::multiply(buffer.getWritePointer(ch), inTrim, numSamples);
-
-    // Input peak meter (post-trim, pre-OS)
+    // Input trim (smoothed, per-sample) + input peak meter
     {
-        auto writePeak = [](std::atomic<float>& atom, const float* data, int n) {
-            float pk = 0.f;
-            for (int i = 0; i < n; ++i) pk = std::max(pk, std::abs(data[i]));
+        auto storePeak = [](std::atomic<float>& atom, float pk) {
             float old = atom.load(std::memory_order_relaxed);
             while (pk > old && !atom.compare_exchange_weak(old, pk, std::memory_order_relaxed)) {}
         };
-        writePeak(inputMeter.peakL, buffer.getReadPointer(0), numSamples);
-        writePeak(inputMeter.peakR,
-                  numCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0), numSamples);
+        const bool hasStereo = numCh > 1;
+        float* chL = buffer.getWritePointer(0);
+        float* chR = hasStereo ? buffer.getWritePointer(1) : nullptr;
+        float maxL = 0.f, maxR = 0.f;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float g = inTrimS.getNextValue();
+            chL[i] *= g;
+            maxL = std::max(maxL, std::abs(chL[i]));
+            if (chR) { chR[i] *= g; maxR = std::max(maxR, std::abs(chR[i])); }
+        }
+        storePeak(inputMeter.peakL, maxL);
+        storePeak(inputMeter.peakR, hasStereo ? maxR : maxL);
     }
 
     // Upsample
@@ -242,20 +251,24 @@ void MojoEngine::processBlock(juce::AudioBuffer<float>& buffer,
     // Downsample
     oversampler->processSamplesDown(inBlock);
 
-    // Global output trim
-    for (int ch = 0; ch < numCh; ++ch)
-        juce::FloatVectorOperations::multiply(buffer.getWritePointer(ch), outTrim, numSamples);
-
-    // Output peak meter (post-trim)
+    // Output trim (smoothed, per-sample) + output peak meter
     {
-        auto writePeak = [](std::atomic<float>& atom, const float* data, int n) {
-            float pk = 0.f;
-            for (int i = 0; i < n; ++i) pk = std::max(pk, std::abs(data[i]));
+        auto storePeak = [](std::atomic<float>& atom, float pk) {
             float old = atom.load(std::memory_order_relaxed);
             while (pk > old && !atom.compare_exchange_weak(old, pk, std::memory_order_relaxed)) {}
         };
-        writePeak(outputMeter.peakL, buffer.getReadPointer(0), numSamples);
-        writePeak(outputMeter.peakR,
-                  numCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0), numSamples);
+        const bool hasStereo = numCh > 1;
+        float* chL = buffer.getWritePointer(0);
+        float* chR = hasStereo ? buffer.getWritePointer(1) : nullptr;
+        float maxL = 0.f, maxR = 0.f;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float g = outTrimS.getNextValue();
+            chL[i] *= g;
+            maxL = std::max(maxL, std::abs(chL[i]));
+            if (chR) { chR[i] *= g; maxR = std::max(maxR, std::abs(chR[i])); }
+        }
+        storePeak(outputMeter.peakL, maxL);
+        storePeak(outputMeter.peakR, hasStereo ? maxR : maxL);
     }
 }

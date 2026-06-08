@@ -47,4 +47,6 @@ private:
     float inTrim  = 1.f;
     float outTrim = 1.f;
     bool  agcOn   = true;
+
+    juce::SmoothedValue<float> inTrimS, outTrimS;
 };

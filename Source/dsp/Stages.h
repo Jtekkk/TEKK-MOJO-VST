@@ -1,5 +1,6 @@
 #pragma once
 #include "DSP.h"
+#include <JuceHeader.h>
 #include <array>
 #include <deque>
 #include <vector>
@@ -31,6 +32,8 @@ namespace Stages
         double sr = 44100.0;
         int    cachedType = -1;
 
+        juce::SmoothedValue<float> driveS, trimGainS;
+
         // {Ms, a, k, alpha}  — Iron I: balanced · Iron II: wide/dark · Iron III: hifi/clean
         static void ironParams(int t, float& Ms, float& a, float& k, float& alpha)
         {
@@ -46,6 +49,8 @@ namespace Stages
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
             dc.setFreq(5.f, static_cast<float>(sampleRate));
+            driveS   .reset(sampleRate, 0.020f); driveS   .setCurrentAndTargetValue(drive);
+            trimGainS.reset(sampleRate, 0.020f); trimGainS.setCurrentAndTargetValue(trimGain);
             updateJA();
         }
 
@@ -62,19 +67,25 @@ namespace Stages
         {
             gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
             dc.z1 = 0.f; ja.reset();
+            driveS   .setCurrentAndTargetValue(drive);
+            trimGainS.setCurrentAndTargetValue(trimGain);
         }
 
         float process(float x) override
         {
             if (bypass) return x;
             updateJA();
-            float preGain = 1.f + drive * 10.f;
+            driveS   .setTargetValue(drive);
+            trimGainS.setTargetValue(trimGain);
+            float d = driveS   .getNextValue();
+            float t = trimGainS.getNextValue();
+            float preGain = 1.f + d * 10.f;
             float M    = ja.process(x * preGain);
-            float norm = ja.linGain() * preGain;          // unity in linear region
+            float norm = ja.linGain() * preGain;
             float out  = M / std::max(norm, 1e-6f);
             float dcOut = out - dc.processLP(out);
-            if (useAGC) { gs.update(x, dcOut); return dcOut * gs.autoTrim * trimGain; }
-            return dcOut * trimGain;
+            if (useAGC) { gs.update(x, dcOut); return dcOut * gs.autoTrim * t; }
+            return dcOut * t;
         }
     };
 
@@ -132,10 +143,22 @@ namespace Stages
         DSP::Biquad low, mid, high;
         double sr = 44100.0;
 
+        juce::SmoothedValue<float> satDriveS;
+
         struct Cache { float lf, lg, mf, mg, mq, hf, hg; } cache{};
 
-        void prepare(double sampleRate, int) override { sr = sampleRate; }
-        void reset() override { low.reset(); mid.reset(); high.reset(); }
+        void prepare(double sampleRate, int) override
+        {
+            sr = sampleRate;
+            satDriveS.reset(sampleRate, 0.020f);
+            satDriveS.setCurrentAndTargetValue(satDrive);
+        }
+
+        void reset() override
+        {
+            low.reset(); mid.reset(); high.reset();
+            satDriveS.setCurrentAndTargetValue(satDrive);
+        }
 
         float process(float x) override
         {
@@ -149,9 +172,11 @@ namespace Stages
                 high.setHighShelf(highFreq, sr, highGain);
                 cache = {lowFreq,lowGain,midFreq,midGain,midQ,highFreq,highGain};
             }
+            satDriveS.setTargetValue(satDrive);
+            float sat = satDriveS.getNextValue();
             float y = high.process(mid.process(low.process(x)));
-            if (satDrive > 0.001f)
-                y = DSP::tanhSat(y, satDrive * 0.25f) * (1.f / (1.f + satDrive * 0.15f));
+            if (sat > 0.001f)
+                y = DSP::tanhSat(y, sat * 0.25f) * (1.f / (1.f + sat * 0.15f));
             return y;
         }
     };
@@ -173,8 +198,22 @@ namespace Stages
         float lastGR = 1.f; // most recent linear gain reduction (audio thread only)
         double sr = 44100.0;
 
-        void prepare(double sampleRate, int) override { sr = sampleRate; env = 0.f; lastGR = 1.f; }
-        void reset() override { env = 0.f; lastGR = 1.f; }
+        juce::SmoothedValue<float> makeupS, mixS;
+
+        void prepare(double sampleRate, int) override
+        {
+            sr = sampleRate;
+            env = 0.f; lastGR = 1.f;
+            makeupS.reset(sampleRate, 0.020f); makeupS.setCurrentAndTargetValue(makeupDB);
+            mixS   .reset(sampleRate, 0.020f); mixS   .setCurrentAndTargetValue(mix);
+        }
+
+        void reset() override
+        {
+            env = 0.f; lastGR = 1.f;
+            makeupS.setCurrentAndTargetValue(makeupDB);
+            mixS   .setCurrentAndTargetValue(mix);
+        }
 
         float process(float x) override
         {
@@ -200,8 +239,6 @@ namespace Stages
 
             if (type == 3)
             {
-                // Vari-Mu: soft knee — ratio increases gradually above threshold.
-                // Knee width = 12 dB; below (thresh - 6 dB) → ratio 1:1.
                 float envDB   = 20.f * std::log10(env + 1e-10f);
                 float overDB  = envDB - threshold;
                 if (overDB > -6.f)
@@ -218,14 +255,17 @@ namespace Stages
             }
 
             lastGR = gr;
-            float makeup = std::pow(10.f, makeupDB / 20.f);
+            makeupS.setTargetValue(makeupDB);
+            mixS   .setTargetValue(mix);
+            float makeup = std::pow(10.f, makeupS.getNextValue() / 20.f);
+            float m      = mixS.getNextValue();
             float wet    = x * gr * makeup;
 
             // Per-type harmonic flavour
             if (type == 0) wet = DSP::tanhSat(wet, 0.04f); // FET: slight grit
             if (type == 3) wet = DSP::tanhSat(wet, 0.07f); // Vari-Mu: warmth
 
-            return wet * mix + x * (1.f - mix);
+            return wet * m + x * (1.f - m);
         }
     };
 
@@ -252,6 +292,8 @@ namespace Stages
         double sr = 44100.0;
         double cachedSR = 0.0;
 
+        juce::SmoothedValue<float> amountS, blendS, trimDBS;
+
         // Tape JA params: lower coercivity than transformer iron
         static constexpr float kTapeMs=1.f, kTapeA=0.42f, kTapeK=0.22f, kTapeAlpha=1.1e-3f;
 
@@ -268,6 +310,9 @@ namespace Stages
                 hfRolloff.setHighShelf (14000.0, sr, -2.0);
                 jaTape.setParams(kTapeMs, kTapeA, kTapeK, kTapeAlpha);
             }
+            amountS.reset(sampleRate, 0.020f); amountS.setCurrentAndTargetValue(amount);
+            blendS .reset(sampleRate, 0.020f); blendS .setCurrentAndTargetValue(blend);
+            trimDBS.reset(sampleRate, 0.020f); trimDBS.setCurrentAndTargetValue(trimDB);
         }
 
         void reset() override
@@ -275,31 +320,35 @@ namespace Stages
             gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
             headBump.reset(); hfBoost.reset(); hfCut.reset(); hfRolloff.reset();
             jaTape.reset();
+            amountS.setCurrentAndTargetValue(amount);
+            blendS .setCurrentAndTargetValue(blend);
+            trimDBS.setCurrentAndTargetValue(trimDB);
         }
 
-        float processTape(float x)
+        float processTape(float x, float amt)
         {
-            // Head bump (always on — defines tape identity)
-            float bumped = headBump.process(x);
-            // Pre-emphasis so HF enters saturation harder
+            float bumped  = headBump.process(x);
             float preEmph = hfBoost.process(bumped);
-            // JA saturation with tape oxide params
-            float preGain = 1.f + amount * 6.f;
+            float preGain = 1.f + amt * 6.f;
             float M    = jaTape.process(preEmph * preGain);
             float norm = jaTape.linGain() * preGain;
             float sat  = M / std::max(norm, 1e-6f);
-            // De-emphasis + playback HF rolloff
             return hfRolloff.process(hfCut.process(sat));
         }
 
         float process(float x) override
         {
             if (bypass) return x;
-            float wet = (mode == 1) ? processTape(x) : DSP::tubeSat(x, amount);
-            float out  = wet * blend + x * (1.f - blend);
-            float trim = std::pow(10.f, trimDB / 20.f);
-            if (useAGC) { gs.update(x, out); return out * gs.autoTrim * trim; }
-            return out * trim;
+            amountS.setTargetValue(amount);
+            blendS .setTargetValue(blend);
+            trimDBS.setTargetValue(trimDB);
+            float a = amountS.getNextValue();
+            float b = blendS .getNextValue();
+            float t = std::pow(10.f, trimDBS.getNextValue() / 20.f);
+            float wet = (mode == 1) ? processTape(x, a) : DSP::tubeSat(x, a);
+            float out  = wet * b + x * (1.f - b);
+            if (useAGC) { gs.update(x, out); return out * gs.autoTrim * t; }
+            return out * t;
         }
     };
 
@@ -363,6 +412,8 @@ namespace Stages
 
         std::vector<float> audioBuf;
 
+        juce::SmoothedValue<float> threshS;
+
         // Monotonic deque: O(1) amortized sliding minimum over a moving window.
         struct SlidingMin
         {
@@ -398,6 +449,8 @@ namespace Stages
             writePos  = 0;
             gainSmooth = 1.f;
             smin.setWindow(lookaheadSamples);
+            threshS.reset(sampleRate, 0.020f);
+            threshS.setCurrentAndTargetValue(threshDB);
         }
 
         void reset() override
@@ -406,11 +459,13 @@ namespace Stages
             writePos  = 0;
             gainSmooth = 1.f;
             smin.reset();
+            threshS.setCurrentAndTargetValue(threshDB);
         }
 
         float process(float x) override
         {
-            float thresh = std::pow(10.f, threshDB / 20.f);
+            threshS.setTargetValue(threshDB);
+            float thresh = std::pow(10.f, threshS.getNextValue() / 20.f);
             float rel    = std::exp(-1.f / (static_cast<float>(sr) * releaseMs * 0.001f));
 
             // Required gain for the current (future) sample — 1.0 when bypassed
@@ -453,6 +508,8 @@ namespace Stages
         double sr = 44100.0;
         int    cachedType = -1;
 
+        juce::SmoothedValue<float> driveS, trimDBS;
+
         // Output xfmr typically has slightly narrower loop (less ringing)
         static void ironParams(int t, float& Ms, float& a, float& k, float& alpha)
         {
@@ -468,6 +525,8 @@ namespace Stages
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
             dc.setFreq(5.f, static_cast<float>(sampleRate));
+            driveS .reset(sampleRate, 0.020f); driveS .setCurrentAndTargetValue(drive);
+            trimDBS.reset(sampleRate, 0.020f); trimDBS.setCurrentAndTargetValue(trimDB);
             updateJA();
         }
 
@@ -484,18 +543,24 @@ namespace Stages
         {
             gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
             dc.z1 = 0.f; ja.reset();
+            driveS .setCurrentAndTargetValue(drive);
+            trimDBS.setCurrentAndTargetValue(trimDB);
         }
 
         float process(float x) override
         {
             if (bypass) return x;
             updateJA();
-            float preGain = 1.f + drive * 8.f;
+            driveS .setTargetValue(drive);
+            trimDBS.setTargetValue(trimDB);
+            float d = driveS .getNextValue();
+            float t = trimDBS.getNextValue();
+            float preGain = 1.f + d * 8.f;
             float M    = ja.process(x * preGain);
             float norm = ja.linGain() * preGain;
             float out  = M / std::max(norm, 1e-6f);
             float dcOut = out - dc.processLP(out);
-            float trim  = std::pow(10.f, trimDB / 20.f);
+            float trim  = std::pow(10.f, t / 20.f);
             if (useAGC) { gs.update(x, dcOut); return dcOut * gs.autoTrim * trim; }
             return dcOut * trim;
         }
@@ -508,13 +573,24 @@ namespace Stages
     {
         float levelDB = -0.1f;
 
-        void prepare(double, int) override {}
-        void reset() override {}
+        juce::SmoothedValue<float> levelS;
+
+        void prepare(double sampleRate, int) override
+        {
+            levelS.reset(sampleRate, 0.020f);
+            levelS.setCurrentAndTargetValue(levelDB);
+        }
+
+        void reset() override
+        {
+            levelS.setCurrentAndTargetValue(levelDB);
+        }
 
         float process(float x) override
         {
             if (bypass) return x;
-            return DSP::hardClip(x, std::pow(10.f, levelDB / 20.f));
+            levelS.setTargetValue(levelDB);
+            return DSP::hardClip(x, std::pow(10.f, levelS.getNextValue() / 20.f));
         }
     };
 
