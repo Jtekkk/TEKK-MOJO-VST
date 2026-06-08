@@ -4,20 +4,20 @@
 namespace MojoColors
 {
     // Stage category colors (from signal flow diagram)
-    const juce::Colour saturation  { 0xff7a4a00 }; // amber/gold
-    const juce::Colour toneDyn     { 0xff1a6b4a }; // teal
-    const juce::Colour utility     { 0xff4a4a4a }; // gray
+    inline const juce::Colour saturation  { 0xff7a4a00 }; // amber/gold
+    inline const juce::Colour toneDyn     { 0xff1a6b4a }; // teal
+    inline const juce::Colour utility     { 0xff4a4a4a }; // gray
 
     // UI chrome
-    const juce::Colour background  { 0xff141414 };
-    const juce::Colour panelBg     { 0xff1e1e1e };
-    const juce::Colour panelBorder { 0xff2e2e2e };
-    const juce::Colour textPrimary { 0xffe8e0d0 };
-    const juce::Colour textDim     { 0xff888070 };
-    const juce::Colour knobTrack   { 0xff333333 };
-    const juce::Colour knobFill    { 0xffe8b84a }; // gold accent
-    const juce::Colour bypass      { 0xffcc3333 };
-    const juce::Colour bypassOff   { 0xff2a5c3a };
+    inline const juce::Colour background  { 0xff141414 };
+    inline const juce::Colour panelBg     { 0xff1e1e1e };
+    inline const juce::Colour panelBorder { 0xff2e2e2e };
+    inline const juce::Colour textPrimary { 0xffe8e0d0 };
+    inline const juce::Colour textDim     { 0xff888070 };
+    inline const juce::Colour knobTrack   { 0xff333333 };
+    inline const juce::Colour knobFill    { 0xffe8b84a }; // gold accent
+    inline const juce::Colour bypass      { 0xffcc3333 };
+    inline const juce::Colour bypassOff   { 0xff2a5c3a };
 }
 
 class MojoLookAndFeel : public juce::LookAndFeel_V4

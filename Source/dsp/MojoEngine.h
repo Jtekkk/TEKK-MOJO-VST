@@ -1,7 +1,7 @@
 #pragma once
 #include "Stages.h"
 #include "../Parameters.h"
-#include "../UI/Meters.h"
+#include "../MeterSource.h"
 #include <JuceHeader.h>
 #include <memory>
 #include <atomic>

@@ -122,7 +122,7 @@ TekkMojoEditor::TekkMojoEditor(TekkMojoProcessor& p)
 
 TekkMojoEditor::~TekkMojoEditor()
 {
-    proc.presets.removeAllChangeListeners();
+    proc.presets.removeChangeListener(this);
     setLookAndFeel(nullptr);
 }
 

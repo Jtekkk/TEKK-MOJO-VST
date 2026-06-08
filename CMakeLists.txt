@@ -61,6 +61,7 @@ target_sources(TekkMojoVST PRIVATE
     Source/PluginEditor.cpp
     Source/PresetManager.cpp
     Source/dsp/MojoEngine.cpp
+    Source/MeterSource.h  # header-only, listed so IDEs pick it up
 )
 
 target_include_directories(TekkMojoVST PRIVATE Source)

@@ -1,17 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
-#include <atomic>
 #include "MojoLookAndFeel.h"
-
-//==============================================================================
-// Filled by the audio thread (relaxed atomic store once per block).
-// Read + reset by the UI thread (exchange) at ~30 Hz.
-//==============================================================================
-struct MeterSource
-{
-    std::atomic<float> peakL { 0.f };
-    std::atomic<float> peakR { 0.f };
-};
+#include "../MeterSource.h" // shared between DSP and UI
 
 //==============================================================================
 // Stereo peak meter with ballistic decay and peak-hold.

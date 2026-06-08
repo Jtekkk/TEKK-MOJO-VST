@@ -14,9 +14,9 @@ struct MojoKnob : juce::Component
              const juce::String& paramID)
     {
         slider.setScrollWheelEnabled(true);
-        slider.setDoubleClickReturnValue(true,
-            apvts.getParameterRange(paramID).convertFrom0to1(
-                apvts.getParameter(paramID)->getDefaultValue()));
+        if (auto* param = apvts.getParameter(paramID))
+            slider.setDoubleClickReturnValue(true,
+                apvts.getParameterRange(paramID).convertFrom0to1(param->getDefaultValue()));
 
         attach = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             apvts, paramID, slider);
@@ -31,8 +31,8 @@ struct MojoKnob : juce::Component
         value.setFont(juce::Font(9.f));
 
         slider.onValueChange = [this, &apvts, paramID] {
-            auto* p = apvts.getParameter(paramID);
-            value.setText(p->getText(p->getValue(), 6), juce::dontSendNotification);
+            if (auto* p = apvts.getParameter(paramID))
+                value.setText(p->getText(p->getValue(), 6), juce::dontSendNotification);
         };
         slider.onValueChange();
 
