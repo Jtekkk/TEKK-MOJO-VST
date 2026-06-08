@@ -14,7 +14,7 @@ namespace Stages
     };
 
     //==========================================================================
-    // 1. Input Transformer
+    // 1. Input Transformer  — Jiles-Atherton B-H hysteresis per iron type
     //==========================================================================
     struct InputTransformer : MojoStage
     {
@@ -23,42 +23,56 @@ namespace Stages
         float trimGain  = 1.f;
         bool  useAGC    = true;
 
-        DSP::GainStage gs;
-        DSP::OnePole   dc;
+        DSP::GainStage  gs;
+        DSP::OnePole    dc;
+        DSP::Hysteresis ja;
         double sr = 44100.0;
+        int    cachedType = -1;
+
+        // {Ms, a, k, alpha}  — Iron I: balanced · Iron II: wide/dark · Iron III: hifi/clean
+        static void ironParams(int t, float& Ms, float& a, float& k, float& alpha)
+        {
+            switch (t) {
+                case 1:  Ms=1.f; a=0.28f; k=0.55f; alpha=3.0e-3f; break;
+                case 2:  Ms=1.f; a=0.60f; k=0.18f; alpha=7.0e-4f; break;
+                default: Ms=1.f; a=0.40f; k=0.35f; alpha=1.6e-3f; break;
+            }
+        }
 
         void prepare(double sampleRate, int) override
         {
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
             dc.setFreq(5.f, static_cast<float>(sampleRate));
+            updateJA();
+        }
+
+        void updateJA()
+        {
+            if (type == cachedType) return;
+            cachedType = type;
+            float Ms, a, k, alpha;
+            ironParams(type, Ms, a, k, alpha);
+            ja.setParams(Ms, a, k, alpha);
         }
 
         void reset() override
         {
-            gs.rmsIn = gs.rmsOut = gs.autoTrim = 0.f;
-            gs.autoTrim = 1.f;
-            dc.z1 = 0.f;
+            gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
+            dc.z1 = 0.f; ja.reset();
         }
 
         float process(float x) override
         {
             if (bypass) return x;
-            float xd = x * (1.f + drive * 12.f);
-            float shaped;
-            switch (type)
-            {
-                case 1:  shaped = DSP::asymTanh(xd, drive, 0.8f);  break; // Iron II: thick
-                case 2:  shaped = DSP::asymTanh(xd, drive, 0.15f); break; // Iron III: subtle
-                default: shaped = DSP::asymTanh(xd, drive, 0.4f);  break; // Iron I
-            }
-            float out = shaped - dc.processLP(shaped); // DC block
-            if (useAGC)
-            {
-                gs.update(x, out);
-                return out * gs.autoTrim * trimGain;
-            }
-            return out * trimGain;
+            updateJA();
+            float preGain = 1.f + drive * 10.f;
+            float M    = ja.process(x * preGain);
+            float norm = ja.linGain() * preGain;          // unity in linear region
+            float out  = M / std::max(norm, 1e-6f);
+            float dcOut = out - dc.processLP(out);
+            if (useAGC) { gs.update(x, dcOut); return dcOut * gs.autoTrim * trimGain; }
+            return dcOut * trimGain;
         }
     };
 
@@ -180,8 +194,25 @@ namespace Stages
 
             float thresh = std::pow(10.f, threshold / 20.f);
             float gr = 1.f;
-            if (env > thresh)
+
+            if (type == 3)
+            {
+                // Vari-Mu: soft knee — ratio increases gradually above threshold.
+                // Knee width = 12 dB; below (thresh - 6 dB) → ratio 1:1.
+                float envDB   = 20.f * std::log10(env + 1e-10f);
+                float overDB  = envDB - threshold;
+                if (overDB > -6.f)
+                {
+                    float knee = std::clamp((overDB + 6.f) / 12.f, 0.f, 1.f);
+                    float effRatio = 1.f + (ratio - 1.f) * knee * knee;
+                    float grDB = -overDB * (1.f - 1.f / effRatio);
+                    gr = std::pow(10.f, grDB / 20.f);
+                }
+            }
+            else if (env > thresh)
+            {
                 gr = std::pow(thresh / (env + 1e-10f), 1.f - 1.f / ratio);
+            }
 
             float makeup = std::pow(10.f, makeupDB / 20.f);
             float wet    = x * gr * makeup;
@@ -196,41 +227,74 @@ namespace Stages
 
     //==========================================================================
     // 5. Tube + Tape Drive
+    //    Tape path: head bump → HF pre-emphasis → JA saturation → HF de-emphasis
+    //    Tube path: tubeSat (odd+even harmonics, kept as-is — sounds good)
     //==========================================================================
     struct TubeTapeDrive : MojoStage
     {
-        int   mode     = 0;   // 0=Tube, 1=Tape
+        int   mode     = 0;
         float amount   = 0.3f;
         float blend    = 1.f;
         float trimDB   = 0.f;
         bool  useAGC   = true;
 
-        DSP::GainStage gs;
+        DSP::GainStage  gs;
+        DSP::Hysteresis jaTape;
+        // Tape colouring filters
+        DSP::Biquad headBump;   // +3 dB peak ~80 Hz: low-end lift
+        DSP::Biquad hfBoost;    // +4 dB shelf ~8 kHz: pre-emphasis (HF saturates first)
+        DSP::Biquad hfCut;      // -4 dB shelf ~8 kHz: de-emphasis (post-sat)
+        DSP::Biquad hfRolloff;  // -2 dB shelf ~14 kHz: playback HF loss
         double sr = 44100.0;
+        double cachedSR = 0.0;
+
+        // Tape JA params: lower coercivity than transformer iron
+        static constexpr float kTapeMs=1.f, kTapeA=0.42f, kTapeK=0.22f, kTapeAlpha=1.1e-3f;
 
         void prepare(double sampleRate, int) override
         {
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
+            if (sampleRate != cachedSR)
+            {
+                cachedSR = sampleRate;
+                headBump .setPeakEQ    (80.0,    sr,  3.0, 0.75);
+                hfBoost  .setHighShelf (8000.0,  sr,  4.0);
+                hfCut    .setHighShelf (8000.0,  sr, -4.0);
+                hfRolloff.setHighShelf (14000.0, sr, -2.0);
+                jaTape.setParams(kTapeMs, kTapeA, kTapeK, kTapeAlpha);
+            }
         }
 
         void reset() override
         {
-            gs.rmsIn = gs.rmsOut = 0.f;
-            gs.autoTrim = 1.f;
+            gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
+            headBump.reset(); hfBoost.reset(); hfCut.reset(); hfRolloff.reset();
+            jaTape.reset();
+        }
+
+        float processTape(float x)
+        {
+            // Head bump (always on — defines tape identity)
+            float bumped = headBump.process(x);
+            // Pre-emphasis so HF enters saturation harder
+            float preEmph = hfBoost.process(bumped);
+            // JA saturation with tape oxide params
+            float preGain = 1.f + amount * 6.f;
+            float M    = jaTape.process(preEmph * preGain);
+            float norm = jaTape.linGain() * preGain;
+            float sat  = M / std::max(norm, 1e-6f);
+            // De-emphasis + playback HF rolloff
+            return hfRolloff.process(hfCut.process(sat));
         }
 
         float process(float x) override
         {
             if (bypass) return x;
-            float wet = (mode == 1) ? DSP::tapeSat(x, amount) : DSP::tubeSat(x, amount);
-            float out = wet * blend + x * (1.f - blend);
+            float wet = (mode == 1) ? processTape(x) : DSP::tubeSat(x, amount);
+            float out  = wet * blend + x * (1.f - blend);
             float trim = std::pow(10.f, trimDB / 20.f);
-            if (useAGC)
-            {
-                gs.update(x, out);
-                return out * gs.autoTrim * trim;
-            }
+            if (useAGC) { gs.update(x, out); return out * gs.autoTrim * trim; }
             return out * trim;
         }
     };
@@ -294,7 +358,7 @@ namespace Stages
     };
 
     //==========================================================================
-    // 8. Output Transformer
+    // 8. Output Transformer  — same JA model, slightly softer params
     //==========================================================================
     struct OutputTransformer : MojoStage
     {
@@ -303,43 +367,57 @@ namespace Stages
         float trimDB   = 0.f;
         bool  useAGC   = true;
 
-        DSP::GainStage gs;
-        DSP::OnePole   dc;
+        DSP::GainStage  gs;
+        DSP::OnePole    dc;
+        DSP::Hysteresis ja;
         double sr = 44100.0;
+        int    cachedType = -1;
+
+        // Output xfmr typically has slightly narrower loop (less ringing)
+        static void ironParams(int t, float& Ms, float& a, float& k, float& alpha)
+        {
+            switch (t) {
+                case 1:  Ms=1.f; a=0.32f; k=0.48f; alpha=2.5e-3f; break;
+                case 2:  Ms=1.f; a=0.65f; k=0.15f; alpha=6.0e-4f; break;
+                default: Ms=1.f; a=0.45f; k=0.30f; alpha=1.2e-3f; break;
+            }
+        }
 
         void prepare(double sampleRate, int) override
         {
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
             dc.setFreq(5.f, static_cast<float>(sampleRate));
+            updateJA();
+        }
+
+        void updateJA()
+        {
+            if (type == cachedType) return;
+            cachedType = type;
+            float Ms, a, k, alpha;
+            ironParams(type, Ms, a, k, alpha);
+            ja.setParams(Ms, a, k, alpha);
         }
 
         void reset() override
         {
-            gs.rmsIn = gs.rmsOut = 0.f;
-            gs.autoTrim = 1.f;
-            dc.z1 = 0.f;
+            gs.rmsIn = gs.rmsOut = 0.f; gs.autoTrim = 1.f;
+            dc.z1 = 0.f; ja.reset();
         }
 
         float process(float x) override
         {
             if (bypass) return x;
-            float xd = x * (1.f + drive * 10.f);
-            float shaped;
-            switch (type)
-            {
-                case 1:  shaped = DSP::asymTanh(xd, drive, 0.6f);  break;
-                case 2:  shaped = DSP::asymTanh(xd, drive, 0.1f);  break;
-                default: shaped = DSP::asymTanh(xd, drive, 0.3f);  break;
-            }
-            float out = shaped - dc.processLP(shaped);
-            float trim = std::pow(10.f, trimDB / 20.f);
-            if (useAGC)
-            {
-                gs.update(x, out);
-                return out * gs.autoTrim * trim;
-            }
-            return out * trim;
+            updateJA();
+            float preGain = 1.f + drive * 8.f;
+            float M    = ja.process(x * preGain);
+            float norm = ja.linGain() * preGain;
+            float out  = M / std::max(norm, 1e-6f);
+            float dcOut = out - dc.processLP(out);
+            float trim  = std::pow(10.f, trimDB / 20.f);
+            if (useAGC) { gs.update(x, dcOut); return dcOut * gs.autoTrim * trim; }
+            return dcOut * trim;
         }
     };
 

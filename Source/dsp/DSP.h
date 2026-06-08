@@ -137,6 +137,41 @@ namespace DSP
         }
     };
 
+    // ---- Jiles-Atherton magnetic hysteresis (simplified, per-sample Euler) ----
+    // Models the B-H loop of transformer iron or tape oxide.
+    // Output M ∈ [-Ms, Ms]; normalize by Ms/(a·k) for unity small-signal gain.
+    struct Hysteresis
+    {
+        float M      = 0.f;
+        float H_prev = 0.f;
+        float Ms = 1.f, a = 0.40f, k = 0.35f, alpha = 1.6e-3f;
+
+        void setParams(float ms, float aVal, float kVal, float alphaVal)
+        {
+            Ms = ms; a = aVal; k = kVal; alpha = alphaVal;
+        }
+
+        void reset() { M = 0.f; H_prev = 0.f; }
+
+        // linGain() returns small-signal dM/dH so callers can normalize
+        float linGain() const { return Ms / (a * (k + alpha * Ms / a)); }
+
+        float process(float H)
+        {
+            float dH  = H - H_prev;
+            float He  = H + alpha * M;
+            float Man = Ms * std::tanh(He / std::max(a, 1e-6f));
+            float sign  = (dH >= 0.f) ? 1.f : -1.f;
+            float denom = k * sign - alpha * (Man - M);
+            // Guard against zero crossing (direction reversal) instability
+            if (std::abs(denom) < 1e-7f)
+                denom = std::copysign(1e-7f, denom);
+            M = std::clamp(M + (Man - M) / denom * dH, -Ms, Ms);
+            H_prev = H;
+            return M;
+        }
+    };
+
     // ---- GainStage: drive pre-gain + auto-gain trim ----
     struct GainStage
     {
