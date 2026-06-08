@@ -87,7 +87,8 @@ struct MojoCombo : juce::Component
 //==============================================================================
 // A titled panel with a bypass toggle and a row of controls
 //==============================================================================
-class StagePanel : public juce::Component
+class StagePanel : public juce::Component,
+                   private juce::Timer
 {
 public:
     static constexpr int kHeaderH = 26;
@@ -127,6 +128,13 @@ public:
         return *this;
     }
 
+    void setGRSource(std::atomic<float>* src)
+    {
+        grSource = src;
+        if (src) startTimerHz(30);
+        else     stopTimer();
+    }
+
     void paint(juce::Graphics& g) override
     {
         auto b = getLocalBounds().toFloat();
@@ -147,6 +155,14 @@ public:
         g.setColour(MojoColors::textPrimary);
         g.setFont(juce::Font(12.f, juce::Font::bold));
         g.drawText(titleText, header.reduced(36, 0), juce::Justification::centred);
+
+        // GR bar — thin strip at header bottom, grows left→right with reduction
+        if (grSource != nullptr && grDisplay < -0.1f)
+        {
+            float frac = std::clamp(-grDisplay / 30.f, 0.f, 1.f);
+            g.setColour(juce::Colour(0xff44dd66).withAlpha(0.8f));
+            g.fillRect(4.f, (float)(kHeaderH - 3), (getWidth() - 8.f) * frac, 3.f);
+        }
     }
 
     void resized() override
@@ -177,11 +193,22 @@ public:
         }
     }
 
-private:
+    void timerCallback() override
+    {
+        if (!grSource) return;
+        float target = grSource->load(std::memory_order_relaxed);
+        // Fast attack, slow release for GR display
+        grDisplay = (target < grDisplay) ? target : grDisplay * 0.92f + target * 0.08f;
+        repaint();
+    }
+
     juce::String titleText;
     juce::Colour color;
     juce::ToggleButton bypass;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttach;
     std::vector<std::unique_ptr<MojoKnob>>  knobs;
     std::vector<std::unique_ptr<MojoCombo>> combos;
+
+    std::atomic<float>* grSource  = nullptr;
+    float               grDisplay = 0.f;
 };

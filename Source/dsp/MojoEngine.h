@@ -1,8 +1,10 @@
 #pragma once
 #include "Stages.h"
 #include "../Parameters.h"
+#include "../UI/Meters.h"
 #include <JuceHeader.h>
 #include <memory>
+#include <atomic>
 
 class MojoEngine
 {
@@ -16,6 +18,10 @@ public:
 
     // Total plugin latency (oversampler + limiter lookahead) in original samples.
     int getLatencyInSamples() const;
+
+    // Meter data — written by audio thread, read by UI thread.
+    MeterSource            inputMeter, outputMeter;
+    std::atomic<float>     compGRdB { 0.f }; // negative dB (e.g. -6)
 
 private:
     void updateParams(juce::AudioProcessorValueTreeState& apvts);

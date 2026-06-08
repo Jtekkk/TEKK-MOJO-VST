@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "UI/MojoLookAndFeel.h"
 #include "UI/StagePanel.h"
+#include "UI/Meters.h"
 
 class TekkMojoEditor : public juce::AudioProcessorEditor,
                        public juce::ChangeListener
@@ -26,6 +27,7 @@ private:
     MojoKnob     inTrimKnob, outTrimKnob;
     juce::ToggleButton agcButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> agcAttach;
+    LevelMeter   inMeter, outMeter;
 
     // Preset bar
     juce::ComboBox   presetCombo;

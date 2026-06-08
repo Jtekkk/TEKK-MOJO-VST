@@ -169,11 +169,12 @@ namespace Stages
         float makeupDB  = 0.f;
         float mix       = 1.f;
 
-        float env = 0.f;
+        float env    = 0.f;
+        float lastGR = 1.f; // most recent linear gain reduction (audio thread only)
         double sr = 44100.0;
 
-        void prepare(double sampleRate, int) override { sr = sampleRate; env = 0.f; }
-        void reset() override { env = 0.f; }
+        void prepare(double sampleRate, int) override { sr = sampleRate; env = 0.f; lastGR = 1.f; }
+        void reset() override { env = 0.f; lastGR = 1.f; }
 
         float process(float x) override
         {
@@ -216,6 +217,7 @@ namespace Stages
                 gr = std::pow(thresh / (env + 1e-10f), 1.f - 1.f / ratio);
             }
 
+            lastGR = gr;
             float makeup = std::pow(10.f, makeupDB / 20.f);
             float wet    = x * gr * makeup;
 

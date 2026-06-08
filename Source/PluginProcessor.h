@@ -40,6 +40,10 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     PresetManager presets;
 
+    MeterSource&        inputMeter()  { return engine.inputMeter; }
+    MeterSource&        outputMeter() { return engine.outputMeter; }
+    std::atomic<float>& compGRdB()   { return engine.compGRdB; }
+
 private:
     MojoEngine engine;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TekkMojoProcessor)

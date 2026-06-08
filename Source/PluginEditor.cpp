@@ -40,6 +40,12 @@ TekkMojoEditor::TekkMojoEditor(TekkMojoProcessor& p)
     addAndMakeVisible(inTrimKnob);
     addAndMakeVisible(outTrimKnob);
 
+    // Level meters
+    inMeter.setSource(&proc.inputMeter());
+    outMeter.setSource(&proc.outputMeter());
+    addAndMakeVisible(inMeter);
+    addAndMakeVisible(outMeter);
+
     // ---- Preset bar ----
     syncPresetCombo();
     presetCombo.onChange = [this]
@@ -175,6 +181,7 @@ void TekkMojoEditor::buildStages()
         .addKnob ("Release", a, compRelease)
         .addKnob ("Makeup",  a, compMakeup)
         .addKnob ("Mix",     a, compMix);
+    panelComp.setGRSource(&proc.compGRdB());
 
     panelDrive
         .addCombo("Mode",  a, driveMode)
@@ -220,7 +227,9 @@ void TekkMojoEditor::resized()
 
     // Header row
     auto header = b.removeFromTop(52);
-    pluginTitle .setBounds(header.removeFromLeft(160));
+    pluginTitle .setBounds(header.removeFromLeft(120));
+    inMeter     .setBounds(header.removeFromLeft(26).reduced(2, 8));
+    outMeter    .setBounds(header.removeFromLeft(26).reduced(2, 8));
     outTrimKnob .setBounds(header.removeFromRight(58).reduced(0, 4));
     inTrimKnob  .setBounds(header.removeFromRight(58).reduced(0, 4));
     agcButton   .setBounds(header.removeFromRight(44).reduced(4, 12));

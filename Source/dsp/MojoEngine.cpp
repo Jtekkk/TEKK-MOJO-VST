@@ -175,6 +175,19 @@ void MojoEngine::processBlock(juce::AudioBuffer<float>& buffer,
     for (int ch = 0; ch < numCh; ++ch)
         juce::FloatVectorOperations::multiply(buffer.getWritePointer(ch), inTrim, numSamples);
 
+    // Input peak meter (post-trim, pre-OS)
+    {
+        auto writePeak = [](std::atomic<float>& atom, const float* data, int n) {
+            float pk = 0.f;
+            for (int i = 0; i < n; ++i) pk = std::max(pk, std::abs(data[i]));
+            float old = atom.load(std::memory_order_relaxed);
+            while (pk > old && !atom.compare_exchange_weak(old, pk, std::memory_order_relaxed)) {}
+        };
+        writePeak(inputMeter.peakL, buffer.getReadPointer(0), numSamples);
+        writePeak(inputMeter.peakR,
+                  numCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0), numSamples);
+    }
+
     // Upsample
     juce::dsp::AudioBlock<float> inBlock(buffer);
     auto osBlock = oversampler->processSamplesUp(inBlock);
@@ -219,10 +232,30 @@ void MojoEngine::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
+    // Compressor GR meter (sampled from last OS frame of each channel)
+    {
+        float grLin = (cmpL.lastGR + cmpR.lastGR) * 0.5f;
+        compGRdB.store(20.f * std::log10(std::max(grLin, 1e-10f)),
+                       std::memory_order_relaxed);
+    }
+
     // Downsample
     oversampler->processSamplesDown(inBlock);
 
     // Global output trim
     for (int ch = 0; ch < numCh; ++ch)
         juce::FloatVectorOperations::multiply(buffer.getWritePointer(ch), outTrim, numSamples);
+
+    // Output peak meter (post-trim)
+    {
+        auto writePeak = [](std::atomic<float>& atom, const float* data, int n) {
+            float pk = 0.f;
+            for (int i = 0; i < n; ++i) pk = std::max(pk, std::abs(data[i]));
+            float old = atom.load(std::memory_order_relaxed);
+            while (pk > old && !atom.compare_exchange_weak(old, pk, std::memory_order_relaxed)) {}
+        };
+        writePeak(outputMeter.peakL, buffer.getReadPointer(0), numSamples);
+        writePeak(outputMeter.peakR,
+                  numCh > 1 ? buffer.getReadPointer(1) : buffer.getReadPointer(0), numSamples);
+    }
 }
