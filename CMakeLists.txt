@@ -29,6 +29,7 @@ juce_add_plugin(TekkMojoVST
 target_sources(TekkMojoVST PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/PresetManager.cpp
     Source/dsp/MojoEngine.cpp
 )
 

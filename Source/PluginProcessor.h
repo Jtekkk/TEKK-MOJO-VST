@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "Parameters.h"
 #include "dsp/MojoEngine.h"
+#include "PresetManager.h"
 
 class TekkMojoProcessor : public juce::AudioProcessor
 {
@@ -22,16 +23,22 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
+    // Programs map 1:1 to factory presets for DAW preset browser support
+    int  getNumPrograms()    override { return presets.numFactory(); }
+    int  getCurrentProgram() override { return presets.currentIndex(); }
+    void setCurrentProgram(int index) override { presets.loadPreset(index); }
+    const juce::String getProgramName(int index) override
+    {
+        auto names = presets.allNames();
+        return index < names.size() ? names[index] : juce::String{};
+    }
     void changeProgramName(int, const juce::String&) override {}
 
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+    PresetManager presets;
 
 private:
     MojoEngine engine;

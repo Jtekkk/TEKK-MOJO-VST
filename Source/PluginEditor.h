@@ -4,7 +4,8 @@
 #include "UI/MojoLookAndFeel.h"
 #include "UI/StagePanel.h"
 
-class TekkMojoEditor : public juce::AudioProcessorEditor
+class TekkMojoEditor : public juce::AudioProcessorEditor,
+                       public juce::ChangeListener
 {
 public:
     explicit TekkMojoEditor(TekkMojoProcessor&);
@@ -19,12 +20,21 @@ private:
     TekkMojoProcessor& proc;
     MojoLookAndFeel    laf;
 
-    // Header / global strip
+    // Header row
     juce::Label  pluginTitle;
     MojoCombo    osCombo;
     MojoKnob     inTrimKnob, outTrimKnob;
     juce::ToggleButton agcButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> agcAttach;
+
+    // Preset bar
+    juce::ComboBox   presetCombo;
+    juce::TextButton prevBtn  { "<" };
+    juce::TextButton nextBtn  { ">" };
+    juce::TextButton saveBtn  { "Save" };
+    void syncPresetCombo();
+    void promptSavePreset();
+    void changeListenerCallback(juce::ChangeBroadcaster*) override { syncPresetCombo(); }
 
     // Signal-chain stage panels
     StagePanel panelInXfmr, panelHPF, panelIEQ, panelComp,
