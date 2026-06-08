@@ -14,6 +14,9 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer,
                       juce::AudioProcessorValueTreeState& apvts);
 
+    // Total plugin latency (oversampler + limiter lookahead) in original samples.
+    int getLatencyInSamples() const;
+
 private:
     void updateParams(juce::AudioProcessorValueTreeState& apvts);
     void rebuildOversampler();

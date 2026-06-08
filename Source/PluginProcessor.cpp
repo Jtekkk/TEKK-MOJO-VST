@@ -13,6 +13,7 @@ TekkMojoProcessor::TekkMojoProcessor()
 void TekkMojoProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     engine.prepare(sampleRate, samplesPerBlock);
+    setLatencySamples(engine.getLatencyInSamples());
 }
 
 void TekkMojoProcessor::releaseResources()

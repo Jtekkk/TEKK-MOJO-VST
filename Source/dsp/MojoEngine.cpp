@@ -1,5 +1,13 @@
 #include "MojoEngine.h"
 
+int MojoEngine::getLatencyInSamples() const
+{
+    int osLatency  = oversampler
+                     ? static_cast<int>(oversampler->getLatencyInSamples()) : 0;
+    int limLatency = limL.latencyInOriginalSamples(osFactor);
+    return osLatency + limLatency;
+}
+
 MojoEngine::MojoEngine()
 {
     oversampler = std::make_unique<juce::dsp::Oversampling<float>>(

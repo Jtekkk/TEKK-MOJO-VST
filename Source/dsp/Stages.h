@@ -1,6 +1,8 @@
 #pragma once
 #include "DSP.h"
 #include <array>
+#include <deque>
+#include <vector>
 
 namespace Stages
 {
@@ -333,27 +335,103 @@ namespace Stages
     };
 
     //==========================================================================
-    // 7. Limiter (brick-wall, peak-hold release)
+    // 7. Limiter — brick-wall with lookahead + true-peak detection
+    //
+    // Architecture:
+    //   • Audio is delayed by kLookaheadMs so gain reduction is applied
+    //     BEFORE the transient arrives → zero overshoot.
+    //   • A monotonic-deque sliding minimum over the lookahead window gives
+    //     the tightest required GR at each output sample in O(1) amortized.
+    //   • Gain snaps down instantly (no attack artifacts) and releases at
+    //     the user-set rate.
+    //   • Bypass still passes the delayed signal so latency is constant.
+    //   • latencyInOriginalSamples(osFactor) lets the engine report PDC.
     //==========================================================================
     struct Limiter : MojoStage
     {
         float threshDB  = -0.3f;
         float releaseMs = 50.f;
-        float env       = 0.f;
-        double sr = 44100.0;
+        static constexpr float kLookaheadMs = 2.f;
 
-        void prepare(double sampleRate, int) override { sr = sampleRate; env = 0.f; }
-        void reset() override { env = 0.f; }
+        double sr = 44100.0;
+        int    lookaheadSamples = 0;
+        int    bufSize = 1;
+        int    writePos = 0;
+        float  gainSmooth = 1.f;
+
+        std::vector<float> audioBuf;
+
+        // Monotonic deque: O(1) amortized sliding minimum over a moving window.
+        struct SlidingMin
+        {
+            struct E { float v; int i; };
+            std::deque<E> dq;
+            int window = 0, tick = 0;
+
+            void setWindow(int w) { window = w; reset(); }
+            void reset()          { dq.clear(); tick = 0; }
+
+            float push(float v)
+            {
+                while (!dq.empty() && dq.front().i <= tick - window) dq.pop_front();
+                while (!dq.empty() && dq.back().v  >= v)             dq.pop_back();
+                dq.push_back({v, tick++});
+                return dq.front().v;
+            }
+        } smin;
+
+        // Latency this stage adds, expressed at the original (non-OS) sample rate.
+        int latencyInOriginalSamples(int osFactor) const
+        {
+            return (osFactor > 0) ? lookaheadSamples / osFactor : 0;
+        }
+
+        void prepare(double sampleRate, int) override
+        {
+            sr = sampleRate;
+            lookaheadSamples = std::max(1,
+                static_cast<int>(sampleRate * kLookaheadMs * 0.001));
+            bufSize = lookaheadSamples + 1;
+            audioBuf.assign(bufSize, 0.f);
+            writePos  = 0;
+            gainSmooth = 1.f;
+            smin.setWindow(lookaheadSamples);
+        }
+
+        void reset() override
+        {
+            std::fill(audioBuf.begin(), audioBuf.end(), 0.f);
+            writePos  = 0;
+            gainSmooth = 1.f;
+            smin.reset();
+        }
 
         float process(float x) override
         {
-            if (bypass) return x;
-            float rel    = std::exp(-1.f / (static_cast<float>(sr) * releaseMs * 0.001f));
             float thresh = std::pow(10.f, threshDB / 20.f);
-            float absX   = std::abs(x);
-            env = (absX > env) ? absX : rel * env + (1.f - rel) * absX;
-            float gr = (env > thresh) ? thresh / (env + 1e-10f) : 1.f;
-            return x * gr;
+            float rel    = std::exp(-1.f / (static_cast<float>(sr) * releaseMs * 0.001f));
+
+            // Required gain for the current (future) sample — 1.0 when bypassed
+            float absX     = std::abs(x);
+            float grNeeded = (!bypass && absX > thresh)
+                             ? thresh / (absX + 1e-10f) : 1.f;
+
+            // Sliding min over the lookahead window
+            float minGR = smin.push(grNeeded);
+
+            // Write future audio, read delayed audio
+            audioBuf[writePos] = x;
+            int readPos = (writePos - lookaheadSamples + bufSize) % bufSize;
+            float delayed = audioBuf[readPos];
+            writePos = (writePos + 1) % bufSize;
+
+            // Gain: instant attack (snap to minimum), exponential release
+            gainSmooth = (minGR < gainSmooth)
+                         ? minGR
+                         : rel * gainSmooth + (1.f - rel) * 1.f;
+            gainSmooth = std::clamp(gainSmooth, 0.f, 1.f);
+
+            return delayed * gainSmooth;
         }
     };
 
