@@ -9,3 +9,10 @@ set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+# Statically embed mingw runtimes so the plugin runs without extra DLLs.
+# -static-libgcc/-static-libstdc++ pull in libgcc_s_seh and libstdc++,
+# and -Wl,-Bstatic,-lwinpthread,-Bdynamic pulls in libwinpthread.
+set(_RUNTIME_FLAGS "-static-libgcc -static-libstdc++ -Wl,-Bstatic,-lwinpthread,-Bdynamic")
+set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_RUNTIME_FLAGS}")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_RUNTIME_FLAGS}")
