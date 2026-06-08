@@ -40,6 +40,8 @@ target_compile_definitions(TekkMojoVST PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
+juce_generate_juce_header(TekkMojoVST)
+
 target_link_libraries(TekkMojoVST
     PRIVATE
         juce::juce_audio_utils
