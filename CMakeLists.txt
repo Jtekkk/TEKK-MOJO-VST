@@ -24,6 +24,10 @@ juce_add_plugin(TekkMojoVST
     COPY_PLUGIN_AFTER_BUILD FALSE
     FORMATS                 VST3 Standalone
     PRODUCT_NAME            "Tekk Mojo"
+    # The VST3 moduleinfo.json helper (moduleinfotool) #includes <Windows.h>
+    # with a capital W, which fails under case-sensitive MinGW cross-builds.
+    # The JSON is an optional scan-speed hint; the plugin loads fine without it.
+    VST3_AUTO_MANIFEST      FALSE
 )
 
 target_sources(TekkMojoVST PRIVATE
@@ -52,6 +56,15 @@ target_link_libraries(TekkMojoVST
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# MSVC auto-links the Win32 system libraries via #pragma comment(lib, ...),
+# but MinGW ignores those pragmas, so list them explicitly when cross-compiling.
+if(MINGW)
+    target_link_libraries(TekkMojoVST PRIVATE
+        gdi32 user32 kernel32 comdlg32 ole32 oleaut32 uuid winmm wininet
+        version ws2_32 shlwapi imm32 comctl32 winhttp rpcrt4 shell32
+        advapi32 gdiplus)
+endif()
 
 # ---- DSP unit tests ----
 enable_testing()
