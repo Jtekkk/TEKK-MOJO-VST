@@ -79,6 +79,27 @@ TekkMojoEditor::TekkMojoEditor(TekkMojoProcessor& p)
     // Keep combo in sync when presets are loaded externally (e.g. DAW recall)
     proc.presets.addChangeListener(this);
 
+    // A/B comparison
+    refreshABButtons();
+    abBtnA.onClick = [this] {
+        proc.abState.select(0);
+        refreshABButtons();
+        syncPresetCombo();
+    };
+    abBtnB.onClick = [this] {
+        proc.abState.select(1);
+        refreshABButtons();
+        syncPresetCombo();
+    };
+    abCopy.onClick = [this] {
+        proc.abState.copyActiveToOther();
+        // no visual change — just overwrites the inactive snapshot
+    };
+    abCopy.setTooltip("Copy current state to the other slot");
+    addAndMakeVisible(abBtnA);
+    addAndMakeVisible(abBtnB);
+    addAndMakeVisible(abCopy);
+
     // Stages viewport
     stagesContainer.addAndMakeVisible(panelInXfmr);
     stagesContainer.addAndMakeVisible(panelHPF);
@@ -208,6 +229,24 @@ void TekkMojoEditor::buildStages()
         .addKnob("Ceiling", a, clipLevel);
 }
 
+void TekkMojoEditor::refreshABButtons()
+{
+    int active = proc.abState.getActive();
+    auto style = [](juce::TextButton& btn, bool on) {
+        btn.setColour(juce::TextButton::buttonColourId,
+                      on ? MojoColors::knobFill : MojoColors::panelBg);
+        btn.setColour(juce::TextButton::buttonOnColourId,
+                      on ? MojoColors::knobFill : MojoColors::panelBg);
+        btn.setColour(juce::TextButton::textColourOffId,
+                      on ? MojoColors::background : MojoColors::textDim);
+        btn.setColour(juce::TextButton::textColourOnId,
+                      on ? MojoColors::background : MojoColors::textDim);
+    };
+    style(abBtnA, active == 0);
+    style(abBtnB, active == 1);
+    abCopy.setTooltip(active == 0 ? "Copy A \xe2\x86\x92 B" : "Copy B \xe2\x86\x92 A");
+}
+
 void TekkMojoEditor::paint(juce::Graphics& g)
 {
     g.fillAll(C::background);
@@ -234,6 +273,10 @@ void TekkMojoEditor::resized()
     inTrimKnob  .setBounds(header.removeFromRight(58).reduced(0, 4));
     agcButton   .setBounds(header.removeFromRight(44).reduced(4, 12));
     osCombo     .setBounds(header.removeFromRight(90).reduced(4, 12));
+    header.removeFromRight(8);
+    abBtnB      .setBounds(header.removeFromRight(28).reduced(1, 12));
+    abCopy      .setBounds(header.removeFromRight(22).reduced(1, 12));
+    abBtnA      .setBounds(header.removeFromRight(28).reduced(1, 12));
 
     // Preset bar
     auto presetRow = b.removeFromTop(28);

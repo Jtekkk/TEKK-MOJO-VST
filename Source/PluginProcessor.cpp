@@ -8,6 +8,7 @@ TekkMojoProcessor::TekkMojoProcessor()
       apvts(*this, nullptr, "TekkMojoState", Params::createLayout()),
       presets(apvts)
 {
+    abState.init(apvts);
 }
 
 void TekkMojoProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)

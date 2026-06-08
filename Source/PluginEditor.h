@@ -29,6 +29,12 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> agcAttach;
     LevelMeter   inMeter, outMeter;
 
+    // A/B comparison
+    juce::TextButton abBtnA { "A" };
+    juce::TextButton abBtnB { "B" };
+    juce::TextButton abCopy { "\xe2\x86\x92" }; // →
+    void refreshABButtons();
+
     // Preset bar
     juce::ComboBox   presetCombo;
     juce::TextButton prevBtn  { "<" };

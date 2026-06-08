@@ -3,6 +3,7 @@
 #include "Parameters.h"
 #include "dsp/MojoEngine.h"
 #include "PresetManager.h"
+#include "ABState.h"
 
 class TekkMojoProcessor : public juce::AudioProcessor
 {
@@ -39,6 +40,7 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     PresetManager presets;
+    ABState       abState;
 
     MeterSource&        inputMeter()  { return engine.inputMeter; }
     MeterSource&        outputMeter() { return engine.outputMeter; }
