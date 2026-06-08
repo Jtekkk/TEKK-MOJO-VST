@@ -46,17 +46,6 @@ static void test_tubeSat()
     check(DSP::tubeSat(0.3f, 0.3f) > 0.f, "tubeSat: positive in -> positive out");
 }
 
-static void test_tapeSat()
-{
-    // Zero -> zero
-    check(std::abs(DSP::tapeSat(0.f, 0.5f)) < 1e-6f, "tapeSat: zero in -> zero out");
-    // Odd symmetry
-    float a = DSP::tapeSat(0.5f, 0.4f);
-    float b = DSP::tapeSat(-0.5f, 0.4f);
-    check(std::abs(a + b) < 1e-5f, "tapeSat: odd symmetry");
-    // Bounded: sign * (1 - exp(-|x*g|)) <= 1
-    check(std::abs(DSP::tapeSat(100.f, 1.f)) <= 1.f, "tapeSat: bounded");
-}
 
 static void test_hardClip()
 {
@@ -223,7 +212,6 @@ int main()
 
     test_tanhSat();
     test_tubeSat();
-    test_tapeSat();
     test_hardClip();
     test_onepole();
     test_biquad();

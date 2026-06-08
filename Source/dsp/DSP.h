@@ -13,32 +13,12 @@ namespace DSP
         return std::tanh(x * (1.f + drive * 3.f));
     }
 
-    // Asymmetric tanh: even-harmonic bias for transformer iron
-    inline float asymTanh(float x, float drive, float asym)
-    {
-        float g = 1.f + drive * 4.f;
-        float gp = g * (1.f + asym * 0.2f);
-        float gn = g * (1.f - asym * 0.1f);
-        return x >= 0.f ? std::tanh(x * gp) : std::tanh(x * gn);
-    }
-
     // Tube: warm, odd + even harmonics
     inline float tubeSat(float x, float drive)
     {
         float g  = 1.f + drive * 5.f;
         float xd = x * g;
         return std::tanh(xd + 0.1f * xd * xd) / (1.f + drive * 0.5f);
-    }
-
-    // Tape: soft limiter / compression curve
-    inline float tapeSat(float x, float drive)
-    {
-        float g    = 1.f + drive * 3.f;
-        float xd   = x * g;
-        float sign = xd >= 0.f ? 1.f : -1.f;
-        float out  = sign * (1.f - std::exp(-std::abs(xd)));
-        float norm = 1.f - drive * 0.3f + 0.3f;
-        return out / std::max(1e-6f, norm);
     }
 
     inline float hardClip(float x, float ceil)
@@ -154,7 +134,7 @@ namespace DSP
         void reset() { M = 0.f; H_prev = 0.f; }
 
         // linGain() returns small-signal dM/dH so callers can normalize
-        float linGain() const { return Ms / (a * (k + alpha * Ms / a)); }
+        float linGain() const { return Ms / std::max(a * k + alpha * Ms, 1e-10f); }
 
         float process(float H)
         {

@@ -41,7 +41,7 @@ public:
     // ---- Rotary knob ----
     void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h,
                           float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
-                          juce::Slider& slider) override
+                          juce::Slider& /*slider*/) override
     {
         auto bounds = juce::Rectangle<float>(x, y, w, h).reduced(4.f);
         float cx = bounds.getCentreX(), cy = bounds.getCentreY();

@@ -158,16 +158,18 @@ void TekkMojoEditor::promptSavePreset()
     window->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
     window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
 
+    // SafePointer guards against the editor being destroyed before the dialog closes
+    juce::Component::SafePointer<TekkMojoEditor> safeThis(this);
     window->enterModalState(true, juce::ModalCallbackFunction::create(
-        [this, window](int result)
+        [safeThis, window](int result)
         {
             if (result == 1)
             {
                 auto name = window->getTextEditorContents("name").trim();
-                if (name.isNotEmpty())
+                if (name.isNotEmpty() && safeThis != nullptr)
                 {
-                    proc.presets.saveUserPreset(name);
-                    syncPresetCombo();
+                    safeThis->proc.presets.saveUserPreset(name);
+                    safeThis->syncPresetCombo();
                 }
             }
             delete window;

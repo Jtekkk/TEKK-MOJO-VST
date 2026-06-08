@@ -180,13 +180,13 @@ void PresetManager::loadPreset(int index)
     if (index < 0 || index >= numTotal()) return;
 
     if (index < numFactory())
-        applyPreset(factory[index]);
+        applyPreset(factory[static_cast<std::size_t>(index)]);
     else
     {
         // User preset: restore full APVTS state from XML
         int ui = index - numFactory();
         if (ui >= numUser()) return;
-        juce::XmlDocument doc(userDir().getChildFile(user[ui].name + ".xml"));
+        juce::XmlDocument doc(userDir().getChildFile(user[static_cast<std::size_t>(ui)].name + ".xml"));
         if (auto xml = doc.getDocumentElement())
             apvts.replaceState(juce::ValueTree::fromXml(*xml));
     }
@@ -201,20 +201,23 @@ void PresetManager::saveUserPreset(const juce::String& name)
     auto file = userDir().getChildFile(name + ".xml");
     auto state = apvts.copyState();
     if (auto xml = state.createXml())
-        xml->writeToFile(file, {});
+    {
+        juce::FileOutputStream out(file);
+        if (out.openedOk()) { out.setPosition(0); out.truncate(); xml->writeTo(out); }
+    }
 
     refreshUserList();
-    // Set current to the newly saved preset
-    for (int i = numFactory(); i < numTotal(); ++i)
-        if (currentName() == name || allNames()[i] == name)
-            { current = i; break; }
+    // Set current to the newly saved preset index
+    for (int i = 0; i < numUser(); ++i)
+        if (user[static_cast<std::size_t>(i)].name == name)
+            { current = numFactory() + i; break; }
     sendChangeMessage();
 }
 
 void PresetManager::deleteUserPreset(int userIndex)
 {
     if (userIndex < 0 || userIndex >= numUser()) return;
-    userDir().getChildFile(user[userIndex].name + ".xml").deleteFile();
+    userDir().getChildFile(user[static_cast<std::size_t>(userIndex)].name + ".xml").deleteFile();
     refreshUserList();
     current = std::clamp(current, 0, numTotal() - 1);
     sendChangeMessage();

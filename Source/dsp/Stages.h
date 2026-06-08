@@ -2,6 +2,8 @@
 #include "DSP.h"
 #include <JuceHeader.h>
 #include <array>
+#include <cstdint>
+#include <cstring>
 #include <deque>
 #include <vector>
 
@@ -113,7 +115,7 @@ namespace Stages
         float process(float x) override
         {
             if (bypass) return x;
-            if (freq != cachedFreq || order != cachedOrder)
+            if (std::memcmp(&freq, &cachedFreq, sizeof(float)) != 0 || order != cachedOrder)
             {
                 cachedFreq  = freq;
                 cachedOrder = order;
@@ -170,14 +172,15 @@ namespace Stages
         float process(float x) override
         {
             if (bypass) return x;
-            if (lowFreq!=cache.lf || lowGain!=cache.lg ||
-                midFreq!=cache.mf || midGain!=cache.mg || midQ!=cache.mq ||
-                highFreq!=cache.hf || highGain!=cache.hg)
             {
-                low.setLowShelf (lowFreq,  sr, lowGain);
-                mid.setPeakEQ   (midFreq,  sr, midGain, midQ);
-                high.setHighShelf(highFreq, sr, highGain);
-                cache = {lowFreq,lowGain,midFreq,midGain,midQ,highFreq,highGain};
+                Cache cur{lowFreq, lowGain, midFreq, midGain, midQ, highFreq, highGain};
+                if (std::memcmp(&cur, &cache, sizeof(Cache)) != 0)
+                {
+                    low.setLowShelf (lowFreq,  sr, lowGain);
+                    mid.setPeakEQ   (midFreq,  sr, midGain, midQ);
+                    high.setHighShelf(highFreq, sr, highGain);
+                    cache = cur;
+                }
             }
             satDriveS.setTargetValue(satDrive);
             float sat = satDriveS.getNextValue();
@@ -308,7 +311,7 @@ namespace Stages
         {
             sr = sampleRate;
             gs.prepare(static_cast<float>(sampleRate));
-            if (sampleRate != cachedSR)
+            if (std::memcmp(&sampleRate, &cachedSR, sizeof(double)) != 0)
             {
                 cachedSR = sampleRate;
                 headBump .setPeakEQ    (80.0,    sr,  3.0, 0.75);
@@ -379,14 +382,15 @@ namespace Stages
         float process(float x) override
         {
             if (bypass) return x;
-            if (lowFreq!=cache.lf || lowGain!=cache.lg ||
-                midFreq!=cache.mf || midGain!=cache.mg || midQ!=cache.mq ||
-                highFreq!=cache.hf || highGain!=cache.hg)
             {
-                low.setLowShelf (lowFreq,  sr, lowGain);
-                mid.setPeakEQ   (midFreq,  sr, midGain, midQ);
-                high.setHighShelf(highFreq, sr, highGain);
-                cache = {lowFreq,lowGain,midFreq,midGain,midQ,highFreq,highGain};
+                Cache cur{lowFreq, lowGain, midFreq, midGain, midQ, highFreq, highGain};
+                if (std::memcmp(&cur, &cache, sizeof(Cache)) != 0)
+                {
+                    low.setLowShelf (lowFreq,  sr, lowGain);
+                    mid.setPeakEQ   (midFreq,  sr, midGain, midQ);
+                    high.setHighShelf(highFreq, sr, highGain);
+                    cache = cur;
+                }
             }
             return high.process(mid.process(low.process(x)));
         }
@@ -424,9 +428,10 @@ namespace Stages
         // Monotonic deque: O(1) amortized sliding minimum over a moving window.
         struct SlidingMin
         {
-            struct E { float v; int i; };
+            struct E { float v; int64_t i; };
             std::deque<E> dq;
-            int window = 0, tick = 0;
+            int     window = 0;
+            int64_t tick   = 0;  // int32 overflows in ~23 min at 8x OS; use 64-bit
 
             void setWindow(int w) { window = w; reset(); }
             void reset()          { dq.clear(); tick = 0; }
@@ -452,7 +457,7 @@ namespace Stages
             lookaheadSamples = std::max(1,
                 static_cast<int>(sampleRate * kLookaheadMs * 0.001));
             bufSize = lookaheadSamples + 1;
-            audioBuf.assign(bufSize, 0.f);
+            audioBuf.assign(static_cast<std::size_t>(bufSize), 0.f);
             writePos  = 0;
             gainSmooth = 1.f;
             smin.setWindow(lookaheadSamples);
@@ -484,9 +489,9 @@ namespace Stages
             float minGR = smin.push(grNeeded);
 
             // Write future audio, read delayed audio
-            audioBuf[writePos] = x;
+            audioBuf[static_cast<std::size_t>(writePos)] = x;
             int readPos = (writePos - lookaheadSamples + bufSize) % bufSize;
-            float delayed = audioBuf[readPos];
+            float delayed = audioBuf[static_cast<std::size_t>(readPos)];
             writePos = (writePos + 1) % bufSize;
 
             // Gain: instant attack (snap to minimum), exponential release
