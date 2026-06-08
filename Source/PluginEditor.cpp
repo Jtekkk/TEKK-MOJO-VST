@@ -31,7 +31,7 @@ TekkMojoEditor::TekkMojoEditor(TekkMojoProcessor& p)
 
     // Title
     pluginTitle.setText("TEKK MOJO", juce::dontSendNotification);
-    pluginTitle.setFont(juce::Font(22.f, juce::Font::bold));
+    pluginTitle.setFont(juce::Font(30.f, juce::Font::bold));
     pluginTitle.setColour(juce::Label::textColourId, C::knobFill);
     pluginTitle.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(pluginTitle);
@@ -113,11 +113,12 @@ TekkMojoEditor::TekkMojoEditor(TekkMojoProcessor& p)
 
     viewport.setViewedComponent(&stagesContainer, false);
     viewport.setScrollBarsShown(true, false);
+    viewport.setScrollBarThickness(12);
     addAndMakeVisible(viewport);
 
-    setSize(560, 750);
+    setSize(1000, 860);
     setResizable(true, true);
-    setResizeLimits(480, 620, 900, 1200);
+    setResizeLimits(820, 640, 1500, 1500);
 }
 
 TekkMojoEditor::~TekkMojoEditor()
@@ -251,13 +252,13 @@ void TekkMojoEditor::paint(juce::Graphics& g)
 {
     g.fillAll(C::background);
     juce::ColourGradient grad(C::saturation.withAlpha(0.18f), 0, 0,
-                              juce::Colours::transparentBlack, 0, 85, false);
+                              juce::Colours::transparentBlack, 0, 124, false);
     g.setGradientFill(grad);
-    g.fillRect(0, 0, getWidth(), 85);
+    g.fillRect(0, 0, getWidth(), 124);
 
     // Subtle separator below preset bar
     g.setColour(MojoColors::panelBorder);
-    g.fillRect(8, 83, getWidth() - 16, 1);
+    g.fillRect(8, 124, getWidth() - 16, 1);
 }
 
 void TekkMojoEditor::resized()
@@ -265,36 +266,37 @@ void TekkMojoEditor::resized()
     auto b = getLocalBounds().reduced(8);
 
     // Header row
-    auto header = b.removeFromTop(52);
-    pluginTitle .setBounds(header.removeFromLeft(120));
-    inMeter     .setBounds(header.removeFromLeft(26).reduced(2, 8));
-    outMeter    .setBounds(header.removeFromLeft(26).reduced(2, 8));
-    outTrimKnob .setBounds(header.removeFromRight(58).reduced(0, 4));
-    inTrimKnob  .setBounds(header.removeFromRight(58).reduced(0, 4));
-    agcButton   .setBounds(header.removeFromRight(44).reduced(4, 12));
-    osCombo     .setBounds(header.removeFromRight(90).reduced(4, 12));
-    header.removeFromRight(8);
-    abBtnB      .setBounds(header.removeFromRight(28).reduced(1, 12));
-    abCopy      .setBounds(header.removeFromRight(22).reduced(1, 12));
-    abBtnA      .setBounds(header.removeFromRight(28).reduced(1, 12));
+    auto header = b.removeFromTop(76);
+    pluginTitle .setBounds(header.removeFromLeft(210));
+    inMeter     .setBounds(header.removeFromLeft(34).reduced(3, 10));
+    outMeter    .setBounds(header.removeFromLeft(34).reduced(3, 10));
+    outTrimKnob .setBounds(header.removeFromRight(76).reduced(3, 6));
+    inTrimKnob  .setBounds(header.removeFromRight(76).reduced(3, 6));
+    agcButton   .setBounds(header.removeFromRight(60).reduced(6, 22));
+    osCombo     .setBounds(header.removeFromRight(124).reduced(6, 22));
+    header.removeFromRight(12);
+    abBtnB      .setBounds(header.removeFromRight(38).reduced(2, 22));
+    abCopy      .setBounds(header.removeFromRight(32).reduced(2, 22));
+    abBtnA      .setBounds(header.removeFromRight(38).reduced(2, 22));
 
     // Preset bar
-    auto presetRow = b.removeFromTop(28);
-    prevBtn    .setBounds(presetRow.removeFromLeft(26).reduced(1, 3));
-    nextBtn    .setBounds(presetRow.removeFromLeft(26).reduced(1, 3));
-    presetCombo.setBounds(presetRow.removeFromLeft(presetRow.getWidth() - 58).reduced(2, 3));
-    saveBtn    .setBounds(presetRow.reduced(2, 3));
+    auto presetRow = b.removeFromTop(40);
+    prevBtn    .setBounds(presetRow.removeFromLeft(34).reduced(2, 4));
+    nextBtn    .setBounds(presetRow.removeFromLeft(34).reduced(2, 4));
+    saveBtn    .setBounds(presetRow.removeFromRight(88).reduced(2, 4));
+    presetCombo.setBounds(presetRow.reduced(4, 4));
 
-    b.removeFromTop(4);
+    b.removeFromTop(6);
 
     // Stage panels in viewport
-    constexpr int gap  = 5;
+    constexpr int gap  = 8;
     constexpr int panH = StagePanel::kTotalH;
     constexpr int nPanels = 9;
     int containerH = nPanels * panH + (nPanels - 1) * gap;
 
     viewport.setBounds(b);
-    stagesContainer.setBounds(0, 0, b.getWidth() - 8, containerH);
+    int innerW = b.getWidth() - viewport.getScrollBarThickness() - 4;
+    stagesContainer.setBounds(0, 0, innerW, containerH);
 
     int pw = stagesContainer.getWidth(), y = 0;
     for (auto* panel : { &panelInXfmr, &panelHPF,    &panelIEQ,

@@ -24,15 +24,15 @@ struct MojoKnob : juce::Component
         label.setText(name, juce::dontSendNotification);
         label.setJustificationType(juce::Justification::centred);
         label.setColour(juce::Label::textColourId, MojoColors::textDim);
-        label.setFont(juce::Font(9.5f));
+        label.setFont(juce::Font(12.5f));
 
         value.setJustificationType(juce::Justification::centred);
         value.setColour(juce::Label::textColourId, MojoColors::textPrimary);
-        value.setFont(juce::Font(9.f));
+        value.setFont(juce::Font(12.f, juce::Font::bold));
 
         slider.onValueChange = [this, &apvts, paramID] {
             auto* p = apvts.getParameter(paramID);
-            value.setText(p->getText(p->getValue(), 6), juce::dontSendNotification);
+            value.setText(p->getText(p->getValue(), 10), juce::dontSendNotification);
         };
         slider.onValueChange();
 
@@ -44,9 +44,9 @@ struct MojoKnob : juce::Component
     void resized() override
     {
         auto b = getLocalBounds();
-        label .setBounds(b.removeFromBottom(14));
-        value .setBounds(b.removeFromBottom(12));
-        slider.setBounds(b);
+        label .setBounds(b.removeFromBottom(18));
+        value .setBounds(b.removeFromBottom(16));
+        slider.setBounds(b.reduced(2, 0));
     }
 };
 
@@ -70,7 +70,7 @@ struct MojoCombo : juce::Component
         label.setText(name, juce::dontSendNotification);
         label.setJustificationType(juce::Justification::centred);
         label.setColour(juce::Label::textColourId, MojoColors::textDim);
-        label.setFont(juce::Font(9.5f));
+        label.setFont(juce::Font(12.5f));
 
         addAndMakeVisible(combo);
         addAndMakeVisible(label);
@@ -79,8 +79,9 @@ struct MojoCombo : juce::Component
     void resized() override
     {
         auto b = getLocalBounds();
-        label.setBounds(b.removeFromBottom(14));
-        combo.setBounds(b.reduced(2, 4));
+        label.setBounds(b.removeFromBottom(18));
+        // Centered, fixed-height box so it doesn't stretch into a tall slab.
+        combo.setBounds(b.withSizeKeepingCentre(juce::jmin(b.getWidth() - 6, 120), 32));
     }
 };
 
@@ -91,8 +92,8 @@ class StagePanel : public juce::Component,
                    private juce::Timer
 {
 public:
-    static constexpr int kHeaderH = 26;
-    static constexpr int kBodyH   = 90;
+    static constexpr int kHeaderH = 30;
+    static constexpr int kBodyH   = 116;
     static constexpr int kTotalH  = kHeaderH + kBodyH + 4;
 
     StagePanel(const juce::String& title, juce::Colour headerColor,
@@ -153,15 +154,15 @@ public:
         g.fillRect(header.withTrimmedTop(5.f));
 
         g.setColour(MojoColors::textPrimary);
-        g.setFont(juce::Font(12.f, juce::Font::bold));
-        g.drawText(titleText, header.reduced(36, 0), juce::Justification::centred);
+        g.setFont(juce::Font(15.f, juce::Font::bold));
+        g.drawText(titleText, header.reduced(52, 0), juce::Justification::centred);
 
         // GR bar — thin strip at header bottom, grows left→right with reduction
         if (grSource != nullptr && grDisplay < -0.1f)
         {
             float frac = std::clamp(-grDisplay / 30.f, 0.f, 1.f);
             g.setColour(juce::Colour(0xff44dd66).withAlpha(0.8f));
-            g.fillRect(4.f, (float)(kHeaderH - 3), (getWidth() - 8.f) * frac, 3.f);
+            g.fillRect(5.f, (float)(kHeaderH - 4), (getWidth() - 10.f) * frac, 4.f);
         }
     }
 
@@ -169,18 +170,22 @@ public:
     {
         auto b = getLocalBounds();
         auto header = b.removeFromTop(kHeaderH);
-        bypass.setBounds(header.removeFromRight(36).reduced(4, 4));
+        bypass.setBounds(header.removeFromRight(48).reduced(5, 5));
 
-        // Layout: combos first (fixed 60px wide), then knobs share remainder
+        // Layout: combos first, then knobs. Each control gets an equal slot,
+        // capped at a comfortable max width and centred so sparse panels don't
+        // leave a few controls stranded across the full width.
         int nCombos = static_cast<int>(combos.size());
         int nKnobs  = static_cast<int>(knobs.size());
         int total   = nCombos + nKnobs;
         if (total == 0) return;
 
-        b.reduce(4, 4);
-        int slotW = b.getWidth() / std::max(1, total);
+        b.reduce(8, 8);
+        constexpr int kMaxSlotW = 132;
+        int slotW = std::min(kMaxSlotW, b.getWidth() / std::max(1, total));
+        int used  = slotW * total;
+        int x = b.getX() + (b.getWidth() - used) / 2;   // centre the control row
 
-        int x = b.getX();
         for (auto& c : combos)
         {
             c->setBounds(x, b.getY(), slotW, b.getHeight());

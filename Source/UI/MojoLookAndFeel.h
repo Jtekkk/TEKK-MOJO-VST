@@ -41,17 +41,19 @@ public:
     // ---- Rotary knob ----
     void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h,
                           float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
-                          juce::Slider& slider) override
+                          juce::Slider&) override
     {
-        auto bounds = juce::Rectangle<float>(x, y, w, h).reduced(4.f);
+        auto bounds = juce::Rectangle<float>(x, y, w, h);
         float cx = bounds.getCentreX(), cy = bounds.getCentreY();
-        float r  = bounds.getWidth() * 0.5f;
+        // Size from the smaller dimension so wide slots don't overflow vertically.
+        float r    = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f - 4.f;
+        float arcW = juce::jmax(3.5f, r * 0.14f);
 
         // Track arc
         juce::Path track;
         track.addArc(cx - r, cy - r, r*2, r*2, rotaryStartAngle, rotaryEndAngle, true);
         g.setColour(MojoColors::knobTrack);
-        g.strokePath(track, juce::PathStrokeType(3.f, juce::PathStrokeType::curved,
+        g.strokePath(track, juce::PathStrokeType(arcW, juce::PathStrokeType::curved,
                                                   juce::PathStrokeType::rounded));
 
         // Fill arc
@@ -59,21 +61,21 @@ public:
         juce::Path fill;
         fill.addArc(cx - r, cy - r, r*2, r*2, rotaryStartAngle, angle, true);
         g.setColour(MojoColors::knobFill);
-        g.strokePath(fill, juce::PathStrokeType(3.f, juce::PathStrokeType::curved,
+        g.strokePath(fill, juce::PathStrokeType(arcW, juce::PathStrokeType::curved,
                                                  juce::PathStrokeType::rounded));
 
         // Knob body
-        float kr = r * 0.68f;
+        float kr = r * 0.7f;
         g.setColour(juce::Colour(0xff282828));
         g.fillEllipse(cx - kr, cy - kr, kr*2, kr*2);
         g.setColour(MojoColors::panelBorder);
         g.drawEllipse(cx - kr, cy - kr, kr*2, kr*2, 1.f);
 
         // Pointer line
-        float px = cx + (kr * 0.6f) * std::sin(angle);
-        float py = cy - (kr * 0.6f) * std::cos(angle);
+        float px = cx + (kr * 0.62f) * std::sin(angle);
+        float py = cy - (kr * 0.62f) * std::cos(angle);
         g.setColour(MojoColors::textPrimary);
-        g.drawLine(cx, cy, px, py, 2.f);
+        g.drawLine(cx, cy, px, py, juce::jmax(2.5f, r * 0.09f));
     }
 
     // ---- Linear slider (for mix/blend) ----
@@ -106,12 +108,27 @@ public:
         g.setColour(on ? MojoColors::bypass : MojoColors::bypassOff);
         g.fillRoundedRectangle(b, 3.f);
         g.setColour(MojoColors::textPrimary);
-        g.setFont(juce::Font(10.f, juce::Font::bold));
+        g.setFont(juce::Font(11.5f, juce::Font::bold));
         g.drawText(btn.getButtonText(), b, juce::Justification::centred);
     }
 
     juce::Font getLabelFont(juce::Label&) override
     {
-        return juce::Font(11.f);
+        return juce::Font(13.f);
+    }
+
+    juce::Font getComboBoxFont(juce::ComboBox&) override
+    {
+        return juce::Font(14.f);
+    }
+
+    juce::Font getPopupMenuFont() override
+    {
+        return juce::Font(14.5f);
+    }
+
+    juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override
+    {
+        return juce::Font(juce::jlimit(12.f, 15.f, buttonHeight * 0.5f));
     }
 };
