@@ -12,6 +12,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+if(APPLE)
+    set(TEKK_FORMATS VST3 AU Standalone)
+else()
+    set(TEKK_FORMATS VST3 Standalone)
+endif()
+
 juce_add_plugin(TekkMojoVST
     COMPANY_NAME            "TekkMojo"
     PLUGIN_MANUFACTURER_CODE Tmoj
@@ -22,7 +28,7 @@ juce_add_plugin(TekkMojoVST
     IS_MIDI_EFFECT          FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
-    FORMATS                 VST3 AU Standalone
+    FORMATS                 ${TEKK_FORMATS}
     PRODUCT_NAME            "Tekk Mojo"
 )
 
