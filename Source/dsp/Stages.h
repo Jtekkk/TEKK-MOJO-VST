@@ -95,15 +95,20 @@ namespace Stages
     struct HighPassFilter : MojoStage
     {
         float freq  = 30.f;
-        int   order = 1; // 0..3 = 1..4 poles
+        int   order = 1; // 0..3 = 6/12/18/24 dB/oct
 
-        std::array<DSP::Biquad, 2> filt;
+        // order 0 (6 dB/oct):  pole1 only
+        // order 1 (12 dB/oct): biq[0] only
+        // order 2 (18 dB/oct): pole1 + biq[0]
+        // order 3 (24 dB/oct): biq[0] + biq[1]
+        DSP::OnePole               pole1;  // 6 dB/oct first-order section
+        std::array<DSP::Biquad, 2> biq;
         double sr = 44100.0;
         float  cachedFreq  = -1.f;
         int    cachedOrder = -1;
 
         void prepare(double sampleRate, int) override { sr = sampleRate; }
-        void reset() override { for (auto& f : filt) f.reset(); }
+        void reset() override { pole1.z1 = 0.f; for (auto& f : biq) f.reset(); }
 
         float process(float x) override
         {
@@ -112,20 +117,22 @@ namespace Stages
             {
                 cachedFreq  = freq;
                 cachedOrder = order;
-                // Butterworth Qs for 4-pole: 0.541, 1.307
+                // Butterworth Qs: 2-pole = 0.7071, 4-pole = 0.5412 / 1.3066
+                // 18 dB/oct 3-pole: first-order RC + 2-pole Butterworth Q=1.0
+                pole1.setFreq(freq, static_cast<float>(sr)); // repurposed as HPF
                 switch (order)
                 {
-                    case 0: filt[0].setHighPass(freq, sr, 0.7071); break;
-                    case 1: filt[0].setHighPass(freq, sr, 0.7071);
-                            filt[1].setHighPass(freq, sr, 0.7071); break;
-                    case 2: filt[0].setHighPass(freq, sr, 0.5412);
-                            filt[1].setHighPass(freq, sr, 1.3066); break;
-                    case 3: filt[0].setHighPass(freq, sr, 0.5412);
-                            filt[1].setHighPass(freq, sr, 1.3066); break;
+                    case 0: break; // pole1 only
+                    case 1: biq[0].setHighPass(freq, sr, 0.7071); break;
+                    case 2: biq[0].setHighPass(freq, sr, 1.0000); break;  // 3-pole Butterworth
+                    case 3: biq[0].setHighPass(freq, sr, 0.5412);
+                            biq[1].setHighPass(freq, sr, 1.3066); break;
                 }
             }
-            float y = filt[0].process(x);
-            if (order >= 1) y = filt[1].process(y);
+            // First-order section: y = x - LP(x)  =>  HPF
+            float y = (order == 0 || order == 2) ? x - pole1.processLP(x) : x;
+            if (order == 1 || order == 2) y = biq[0].process(y);
+            if (order == 3) { y = biq[0].process(y); y = biq[1].process(y); }
             return y;
         }
     };
